@@ -1,122 +1,107 @@
---zad 1
+﻿--1. Przygotuj blok anonimowy, który:
+-- -znajdzie średnią stawkę wynagrodzenia pracowników, 
+-- -wyświetli szczegóły pracowników, których stawka wynagrodzenia jest niższa niż średnia.
 
 BEGIN
-	DECLARE @MEAN FLOAT 
-	SET @MEAN = (SELECT AVG(Rate) FROM HumanResources.EmployeePayHistory) --KONIECZNIE TE NAWIASY
-	SELECT * FROM HumanResources.Employee 
-		INNER JOIN HumanResources.EmployeePayHistory ON HumanResources.Employee.BusinessEntityID = HumanResources.EmployeePayHistory.BusinessEntityID
-		WHERE HumanResources.EmployeePayHistory.Rate < @MEAN
+	DECLARE @avgRate MONEY
+	SELECT @avgRate = AVG(Rate) FROM HumanResources.EmployeePayHistory
+	SELECT Employee.* FROM HumanResources.Employee
+	JOIN HumanResources.EmployeePayHistory ON Employee.BusinessEntityID = EmployeePayHistory.BusinessEntityID
+	WHERE Rate > @avgRate
 END;
 
---zad 2
+--2. Utwórz funkcję, która zwróci datę wysyłki określonego zamówienia.
 
-CREATE OR ALTER FUNCTION TIME_OF_SHIPMENT(@ID AS INTEGER)
+CREATE OR ALTER FUNCTION Purchasing.Get_Date(@OrderNo INTEGER)
 RETURNS DATETIME
 AS
 BEGIN
-	RETURN (SELECT ShipDate FROM Sales.SalesOrderHeader WHERE @ID = SalesOrderID)
-END;
+	RETURN (SELECT DueDate FROM Purchasing.PurchaseOrderDetail WHERE PurchaseOrderDetailID = @OrderNo)
+END
 
-SELECT dbo.TIME_OF_SHIPMENT(43740) AS 'Czas wysy�ki'
+SELECT Purchasing.Get_Date(6)
 
---zad 3
+SELECT * FROM Purchasing.PurchaseOrderDetail
 
-CREATE OR ALTER PROCEDURE GET_DATA(@NAME AS VARCHAR(40))
+--3. Utwórz procedurę składowaną, która jako parametr przyjmuję nazwę produktu, 
+--   a jako rezultat wyświetla jego identyfikator, numer i dostępność.
+
+CREATE OR ALTER PROCEDURE Production.Get_Data(@PrName VARCHAR(100))
+AS
+	SELECT Pr.ProductID, Pr.Name, SUM(Inv.Quantity) AS Accesibility FROM Production.Product Pr
+	JOIN Production.ProductInventory Inv ON Pr.ProductID = Inv.ProductID
+	WHERE Pr.Name = @PrName
+	GROUP BY Pr.ProductID, Pr.Name
+
+--Column 'Production.Product.ProductID' is invalid in the select list because it is not contained in either an aggregate function or the GROUP BY clause.
+
+EXEC Production.Get_Data 'Crown Race'
+
+--4. Utwórz funkcję, która zwraca numer karty kredytowej dla konkretnego zamówienia.
+
+CREATE OR ALTER FUNCTION Sales.CreditCardNo(@OrderID INTEGER)
+RETURNS NVARCHAR(20)
 AS
 BEGIN
-	SELECT Pr.ProductID, Pr.ProductNumber, Quantity FROM Production.Product as Pr
-		   INNER JOIN Production.ProductInventory as Inv ON Pr.ProductID = Inv.ProductID
-		   WHERE Pr.Name = @NAME
+	RETURN (SELECT c.CardNumber FROM Sales.SalesOrderHeader h
+	INNER JOIN Sales.CreditCard c
+	ON h.CreditCardID = c.CreditCardID AND h.SalesOrderID = @OrderID)
 END;
 
-EXEC AdventureWorks2017.dbo.GET_DATA 'Blade'
+SELECT Sales.CreditCardNo(43659) AS Card_Number
 
---zad 4
+--EXEC sp_help 'Sales.CreditCard'
 
-CREATE OR ALTER FUNCTION CARD_NUMBER(@ID AS INTEGER)
-RETURNS NVARCHAR(14)
+--5. Utwórz procedurę składowaną, która jako parametry wejściowe przyjmuje dwie liczby, num1 i num2, a zwraca wynik ich dzielenia. 
+--	 Ponadto wartość num1 powinna zawsze być większa niż wartość num2. Jeżeli wartość num1 jest mniejsza niż num2, 
+--	 wygeneruj komunikat o błędzie „Niewłaściwie zdefiniowałeś dane wejściowe”.
+
+CREATE OR ALTER PROCEDURE Sales.Division(@num1 FLOAT, @num2 FLOAT)
 AS
-BEGIN
-	DECLARE @NR AS NVARCHAR(14)
-	SET @NR = (SELECT CardNumber FROM Sales.CreditCard
-			   INNER JOIN Sales.SalesOrderHeader ON Sales.CreditCard.CreditCardID = Sales.SalesOrderHeader.CreditCardID
-			   WHERE SalesOrderID = @ID)
-	RETURN @NR
-END;
-
-SELECT dbo.CARD_NUMBER(43667) AS numer_karty
-
---zad 5
-
---EXEC sp_addmessage @msgnum = 
-
-CREATE OR ALTER PROCEDURE DIVISION   
-@num1 AS FLOAT, @num2 AS FLOAT
-OUTPUT
-AS
-BEGIN
-	IF (@num1 < @num2 OR @num2 = 0)
-		BEGIN
-			RAISERROR('Niew�a�ciwie zdefiniowa�e� dane wej�ciowe', 1, 1)
-		END
+	IF (@num1 < @num2)
+	BEGIN
+		RAISERROR('Niewłaściwie zdefiniowałeś dane wejściowe',10,1)
+	END
+	ELSE IF (@num2 = 0)
+	BEGIN
+		RAISERROR('Nie można dzielić przez 0!',10,1)
+	END
 	ELSE
-		BEGIN
-			SELECT @num1 / @num2 AS Quotient
-		END
-END;
+	BEGIN
+		DECLARE @iloraz FLOAT = @num1/@num2
+		SELECT CONCAT(CONVERT(VARCHAR(10), @num1), ' / ', @num2, ' = ', ROUND(@iloraz, 2)) AS Wynik
+	END
 
-BEGIN TRY
-	DECLARE @quotient AS FLOAT
-	EXEC @quotient = AdventureWorks2017.dbo.DIVISION 20, 6 --dlaczego dzielenie jest tylko ca�kowite?? Return zwraca tylko inty
-	PRINT(@quotient)									   --je�li chcemy floaty to select
-END TRY
-BEGIN CATCH
-	DECLARE @msg AS VARCHAR(100)
-	SET @msg = (SELECT ERROR_MESSAGE() AS ErrorMessage)		--nawiasy musz� by� po =
-	PRINT(@msg)
-END CATCH
+EXEC Sales.Division 20, 6
 
---zad 6
-SELECT SQL_VARIANT_PROPERTY(NationalIDNumber, 'BaseType') FROM HumanResources.Employee --> sprawdzanie typu zmiennej
+--6. Napisz procedurę, która jako parametr przyjmie NationalIDNumber danej osoby, a zwróci stanowisko oraz liczbę dni urlopowych i chorobowych.
 
-CREATE OR ALTER PROCEDURE POST_AND_DAYS(@ID AS NVARCHAR(9))
+CREATE OR ALTER PROCEDURE HumanResources.Get_NID_No(@Number NVARCHAR(15))
 AS
-BEGIN
-	SELECT VacationHours, SickLeaveHours FROM HumanResources.Employee WHERE NationalIDNumber = @ID
-END;
+	SELECT JobTitle, VacationHours, SickLeavehours FROM HumanResources.Employee WHERE NationalIDNumber = @Number
 
-EXEC AdventureWorks2017.dbo.POST_AND_DAYS '998320692'
+EXEC HumanResources.Get_NID_No '112457891'
 
---zad 7
+--7. Napisz procedurę będącą kalkulatorem walutowym. Wykorzystaj dwie tabele: Sales.Currency oraz Sales.CurrencyRate. 
+--   Parametrami wejściowymi mają być: kwota, waluty oraz data (CurrencyRateDate). Przyjmij, iż zawsze jedną ze stron 
+--   jest dolar amerykański (USD). Zaimplementuj kalkulację obustronną, tj:
+--   1400 USD → PLN lub PLN → USD
 
-SELECT SQL_VARIANT_PROPERTY(CurrencyRateDate, 'BaseType') FROM Sales.CurrencyRate
-
-CREATE OR ALTER FUNCTION CONV(@currency AS NCHAR(3), @date AS DATETIME)
-RETURNS MONEY
+CREATE OR ALTER PROCEDURE Sales.Currency_Calculator(@Quantity MONEY, @Currency1 VARCHAR(3), @Currency2 VARCHAR(3), @RateDate DATETIME)
 AS
-BEGIN
-	DECLARE @var AS MONEY
-	SET @var = (SELECT EndOfDayRate FROM Sales.CurrencyRate
-		        LEFT JOIN Sales.Currency ON Sales.CurrencyRate.ToCurrencyCode = Sales.Currency.CurrencyCode
-		        WHERE Sales.Currency.CurrencyCode = @currency AND CurrencyRateDate = @date)
-	RETURN @var
-END;
-
-CREATE OR ALTER PROCEDURE CURRENCY_CALC @quantity AS INTEGER, @currency AS NCHAR(3), @date AS DATETIME
-OUTPUT
-AS
-BEGIN
-	DECLARE @rate AS MONEY
-	IF (@currency = 'USD')
-		BEGIN
-			SELECT @rate = dbo.CONV('GBP', @date)
-			SELECT @quantity * @rate
-		END
+	DECLARE @Rate MONEY
+	
+	IF @Currency1 = 'USD'
+	BEGIN
+		SELECT @Rate = EndOfDayRate FROM Sales.CurrencyRate WHERE CurrencyRateDate = @RateDate AND ToCurrencyCode = @Currency2
+		PRINT @Quantity * @Rate
+	END
 	ELSE
-		BEGIN
-			SELECT @rate = dbo.CONV(@currency, @date)
-			SELECT @quantity / @rate
-		END
-END;
+	BEGIN	
+		SELECT @Rate = EndOfDayRate FROM Sales.CurrencyRate WHERE CurrencyRateDate = @RateDate AND ToCurrencyCode = @Currency1
+		PRINT @Quantity / @Rate
+	END
 
-EXEC AdventureWorks2017.dbo.CURRENCY_CALC 1400, 'GBP', '20110610'
+EXEC Sales.Currency_Calculator 200, 'EUR', 'USD', '2011-05-31'
+
+SELECT * FROM Sales.CurrencyRate
