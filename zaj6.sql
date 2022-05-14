@@ -28,50 +28,40 @@
 --id_budynku, id_pomieszczenia
 --id_budynku, id_pomieszczenia, numer_pomieszczenia
 
-----------------------------------------------------------------
+-------------
 
---6ba dodanie +48 zrobione
+--a) Zmodyfikuj numer telefonu w tabeli pracownicy, dodaj¹c do niego kierunkowy dla Polski w nawiasie (+48)
 
-ALTER TABLE ksiegowosc.pracownicy
+--zmiana typu danych w kolumnie
+ALTER TABLE rozliczenia.pracownicy
 ALTER COLUMN telefon VARCHAR(20);
 
-UPDATE ksiegowosc.pracownicy
-SET telefon = '(+48) ' + telefon
+UPDATE rozliczenia.pracownicy
+SET telefon = '(+48)' + telefon
 
---6bb wprowadzenie myœlników
+SELECT * FROM rozliczenia.pracownicy;
 
---substring(expression, start, length)
+--b) Zmodyfikuj atrybut telefon w tabeli pracownicy tak, aby numer oddzielony by³ myœlnikami wg wzoru: ‘555-222-333’
 
-UPDATE ksiegowosc.pracownicy
-SET telefon = SUBSTRING(telefon, 1,9) + '-' + SUBSTRING(telefon,10,3) + '-' + SUBSTRING(telefon, 13,3)
+UPDATE rozliczenia.pracownicy
+SET telefon = SUBSTRING(telefon, 1, 8) + '-' + SUBSTRING(telefon, 9, 3) + '-' + SUBSTRING(telefon, 12, 3);
 
---6bc najd³u¿sze nazwisko pracownika napisane wielkimi literami zrobione
+--SUBSTRING(expression, starting position INT, length INT);
 
-SELECT TOP 1 UPPER(nazwisko) AS nazwisko
-FROM ksiegowosc.pracownicy
-ORDER BY datalength(nazwisko) DESC
+--c) Wyœwietl dane pracownika, którego nazwisko jest najd³u¿sze, u¿ywaj¹c du¿ych liter
 
---6bd dane pracowników i pensje przy pomocy algorytmu md5
+SELECT TOP 1 UPPER(imie) AS IMIE, UPPER(nazwisko) AS NAZWISKO FROM rozliczenia.pracownicy
+ORDER BY LEN(nazwisko) DESC
 
-SELECT hashbytes('MD5', imie) AS imie_hash, hashbytes('MD5', nazwisko) AS nazwisko_hash, 
-	   hashbytes('MD5',CONVERT(VARCHAR(10),kwota_netto)) AS p³aca_hash
-FROM ksiegowosc.pracownicy
-	INNER JOIN ksiegowosc.wynagrodzenie ON ksiegowosc.pracownicy.ID_pracownika = ksiegowosc.wynagrodzenie.ID_pracownika
-	INNER JOIN ksiegowosc.pensje ON ksiegowosc.pensje.ID_pensji = ksiegowosc.wynagrodzenie.ID_pensji
+--d) Wyœwietl dane pracowników i ich pensje zakodowane przy pomocy algorytmu md5
 
---6bf left-join zrobiony
+SELECT imie, HASHBYTES('md5', imie) AS zakodowane_imie, nazwisko, HASHBYTES('md5', nazwisko) AS zakodowane_nazwisko, 
+	   kwota_netto, HASHBYTES('md5', CAST(kwota_netto AS VARCHAR(10))) AS zakodowana_kwota
+FROM rozliczenia.pracownicy
+INNER JOIN rozliczenia.pensje ON id_pensji = id_pracownika
 
-SELECT imie, nazwisko, kwota_netto, kwota AS kwota_premii FROM ksiegowosc.pracownicy
-	LEFT JOIN ksiegowosc.wynagrodzenie ON ksiegowosc.pracownicy.ID_pracownika = ksiegowosc.wynagrodzenie.ID_pracownika
-	LEFT JOIN ksiegowosc.pensje ON ksiegowosc.pensje.ID_pensji = ksiegowosc.wynagrodzenie.ID_pensji
-	LEFT JOIN ksiegowosc.premie ON ksiegowosc.premie.ID_premii = ksiegowosc.pensje.ID_pensji + 1000
+--f) Wyœwietl pracowników, ich pensje oraz premie. Wykorzystaj z³¹czenie lewostronne.
 
---6bg raport
-
-SELECT 'Pracownik ' + imie + ' ' + nazwisko + ' w dniu ' + CONVERT(VARCHAR(11), data_wyplaty) + ' otrzymal/a pensje calkowita na kwote ' + 
-		CONVERT(VARCHAR(10),(kwota_netto + kwota)) + ' gdzie wynagrodzenie zasadnicze wynosilo: ' + CONVERT(VARCHAR(7), kwota_netto) 
-		+ ', premia: ' + CONVERT(VARCHAR(7), kwota) + ', nadgodziny: ' + CONVERT(VARCHAR(7), kwota)
-FROM ksiegowosc.pracownicy
-	INNER JOIN ksiegowosc.wynagrodzenie ON ksiegowosc.wynagrodzenie.ID_pracownika = ksiegowosc.pracownicy.ID_pracownika
-	INNER JOIN ksiegowosc.pensje ON ksiegowosc.wynagrodzenie.ID_pensji = ksiegowosc.pensje.ID_pensji
-	INNER JOIN ksiegowosc.premie ON ksiegowosc.pensje.ID_premii = ksiegowosc.premie.ID_premii
+SELECT * FROM rozliczenia.pracownicy
+LEFT JOIN rozliczenia.pensje p1 ON pracownicy.id_pracownika = p1.id_pensji
+LEFT JOIN rozliczenia.premie p2 ON p1.id_pensji = p2.id_premii
